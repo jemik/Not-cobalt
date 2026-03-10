@@ -8,7 +8,8 @@ This tool mimics the HTTP POST traffic patterns of Cobalt Strike beacons to help
 
 ## Components
 
-- **cobalt_client.py** - Simulates Cobalt Strike beacon HTTP POST requests with single or beacon mode
+- **cobalt_client.py** - Python client that simulates Cobalt Strike beacon HTTP POST requests with single or beacon mode
+- **cobalt_client.ps1** - PowerShell client with identical functionality for Windows environments
 - **fake_cobalt_server.py** - Simple Python HTTP server that mimics a C2 server endpoint
 - **submit.php** - PHP endpoint that simulates realistic C2 server responses
 
@@ -26,9 +27,14 @@ The client generates realistic Cobalt Strike beacon characteristics:
 
 ## Requirements
 
+**Python Client:**
 ```bash
 pip install requests
 ```
+
+**PowerShell Client:**
+- PowerShell 5.1 or later (built into Windows)
+- No additional packages required
 
 ## Usage
 
@@ -45,6 +51,8 @@ php -S 0.0.0.0:8080 submit.php
 ```
 
 ### Run the Client
+
+#### Python Client
 
 **Single request (one-time check-in):**
 ```bash
@@ -80,6 +88,51 @@ python cobalt_client.py --url http://example.com/api/submit.php?id=99999
 **Custom cookie value:**
 ```bash
 python cobalt_client.py --domain target.local --cookie-value dGVzdENvb2tpZVZhbHVl
+```
+
+#### Python Client (cobalt_client.py)
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--domain` | `localhost:8000` | Target domain/IP with optional port |
+| `--url` | - | Full URL (overrides --domain) |
+| `--id` | `12345` | Numeric ID for query parameter |
+| `--cookie-value` | (random) | Custom Base64 cookie value |
+| `--beacon-mode` | disabled | Enable continuous beacon mode |
+| `--duration` | `5.0` | Duration to run beacon mode (minutes) |
+| `--interval` | `60.0` | Sleep interval between beacons (seconds) |
+| `--jitter` | `0.0` | Random variance for interval (0-100%) |
+
+#### PowerShell Client (cobalt_client.ps1)
+
+| Parameter | Default | Description |
+|----------|---------|-------------|
+| `-Domain` | `localhost:8000` | Target domain/IP with optional port |
+| `-Url` | - | Full URL (overrides -Domain) |
+| `-Id` | `12345` | Numeric ID for query parameter |
+| `-CookieValue` | (random) | Custom Base64 cookie value |
+| `-BeaconMode` | disabled | Enable continuous beacon mode |
+| `-Duration` | `5.0` | Duration to run beacon mode (minutes) |
+| `-Interval` | `60.0` | Sleep interval between beacons (seconds) |
+| `-J
+# Custom duration and interval
+.\cobalt_client.ps1 -BeaconMode -Duration 10 -Interval 30
+
+# With jitter
+.\cobalt_client.ps1 -BeaconMode -Domain "192.168.1.100:8080" -Interval 60 -Jitter 20
+
+# Full example
+.\cobalt_client.ps1 -BeaconMode -Domain "target.local:8080" -Duration 15 -Interval 45 -Jitter 10
+```
+
+**Custom URL:**
+```powershell
+.\cobalt_client.ps1 -Url "http://example.com/api/submit.php?id=99999"
+```
+
+**Get help:**
+```powershell
+Get-Help .\cobalt_client.ps1 -Full
 ```
 
 ### Command-Line Arguments
