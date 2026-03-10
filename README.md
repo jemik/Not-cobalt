@@ -8,8 +8,9 @@ This tool mimics the HTTP POST traffic patterns of Cobalt Strike beacons to help
 
 ## Components
 
-- **cobalt_client.py** - Simulates Cobalt Strike beacon HTTP POST requests
-- **fake_cobalt_server.py** - Simple HTTP server that mimics a C2 server endpoint
+- **cobalt_client.py** - Simulates Cobalt Strike beacon HTTP POST requests with single or beacon mode
+- **fake_cobalt_server.py** - Simple Python HTTP server that mimics a C2 server endpoint
+- **submit.php** - PHP endpoint that simulates realistic C2 server responses
 
 ## Features
 
@@ -18,7 +19,9 @@ The client generates realistic Cobalt Strike beacon characteristics:
 - ✅ `Content-Type: application/octet-stream` header
 - ✅ Long Base64-encoded session cookies (128+ characters)
 - ✅ Realistic User-Agent strings
-- ✅ Binary payloads starting with null bytes
+- ✅ Binary payloads starting with null 
+- ✅ Beacon mode with configurable intervals and jitter
+- ✅ Continuous operation for extended testing periodsbytes
 - ✅ Properly sized payloads (64+ bytes)
 
 ## Requirements
@@ -31,15 +34,37 @@ pip install requests
 
 ### Start the Test Server
 
+**Option 1: Using the Python fake server**
 ```bash
 python fake_cobalt_server.py --port 8000
 ```
 
+**Option 2: Using the PHP endpoint**
+```bash
+php -S 0.0.0.0:8080 submit.php
+```
+
 ### Run the Client
 
-**Basic usage (localhost):**
+**Single request (one-time check-in):**
 ```bash
 python cobalt_client.py
+```
+
+**Beacon mode (continuous periodic check-ins):**
+```bash
+# Run for 5 minutes with 60 second intervals (default)
+python cobalt_client.py --beacon-mode
+
+# Custom duration and interval
+python cobalt_client.py --beacon-mode --duration 10 --interval 30
+
+# With jitter for realistic randomization (±20% variance)
+python cobalt_client.py --beacon-mode --interval 60 --jitter 20
+
+# Full example: 15 minutes, 45 second intervals, 10% jitter
+python cobalt_client.py --beacon-mode --domain 192.168.1.100:8080 \
+                       --duration 15 --interval 45 --jitter 10
 ```
 
 **Specify custom domain:**
@@ -67,18 +92,42 @@ python cobalt_client.py --domain target.local --cookie-value dGVzdENvb2tpZVZhbHV
 | `--url` | - | Full URL (overrides --domain) |
 | `--id` | `12345` | Numeric ID for query parameter |
 | `--cookie-value` | (random) | Custom Base64 cookie value |
+| `--beacon-mode` | disabled | Enable continuous beacon mode |
+| `--duration` | `5.0` | Duration to run beacon mode (minutes) |
+| `--interval` | `60.0` | Sleep interval between beacons (seconds) |
+| `--jitter` | `0.0` | Random variance for interval (0-100%) |
 
 #### Server (fake_cobalt_server.py)
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--port` | `8000` | Port to listen on |
-
-## Testing Your NDR
-
+### Single Request Testing
 1. Start the fake server on a test machine
-2. Run the client from another machine (or the same one for local testing)
-3. Check your NDR solution for alerts related to:
+2. Run the client once to generate a single beacon check-in
+3. Check your NDR solution for immediate alerts
+
+### Beacon Mode Testing (Recommended)
+1. Start the server on a test machine (or use PHP endpoint)
+2. Run the client in beacon mode with realistic timing:
+   ```bash
+   python cobalt_client.py --beacon-mode --domain <target> \
+                          --duration 10 --interval 60 --jitter 20
+   ```
+3. Monitor your NDR for:
+   - Detection of the initial beacon
+   - Pattern recognition over time
+   - Alert generation for sustained C2 activity
+   - Time-to-detection metrics
+
+### What to Look For
+
+Your NDR should flag traffic with these characteristics:
+- Cobalt Strike beacon activity signatures
+- C2 communication patterns
+- Suspicious HTTP POST with binary payloads
+- Long Base64-encoded cookies
+- Periodic check-in patterns (in beacon mode)
+- POST requests with octet-stream to .php endpointalerts related to:
    - Cobalt Strike beacon activity
    - C2 communication patterns
    - Suspicious HTTP POST with binary payloads

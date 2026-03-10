@@ -20,6 +20,8 @@ import argparse
 import base64
 import os
 import sys
+import time
+from datetime import datetime, timedelta
 from typing import Optional
 
 import requests
@@ -45,12 +47,16 @@ def build_payload() -> bytes:
     return payload + encrypted_data
 
 
-def send_post(url: str, cookie_value: str) -> None:
+def send_post(url: str, cookie_value: str, verbose: bool = True) -> bool:
     """Send the crafted POST request to the specified URL with the given cookie.
 
     Args:
         url: Full URL including query string (e.g., http://host/submit.php?id=12345).
         cookie_value: Base64-encoded string to set as the sessionid value.
+        verbose: Whether to print detailed output.
+        
+    Returns:
+        True if request was successful, False otherwise.
     """
     # Cobalt Strike beacons use specific User-Agent strings
     # Common ones include IE, Chrome, or custom values
@@ -60,26 +66,96 @@ def send_post(url: str, cookie_value: str) -> None:
         'Cookie': f'sessionid={cookie_value}'
     }
     payload = build_payload()
-    print(f"Sending POST to {url}")
-    print(f"Headers: {headers}")
-    print(f"Payload length: {len(payload)} bytes")
-    print(f"Cookie length: {len(cookie_value)} characters")
-    response = requests.post(url, headers=headers, data=payload)
-    print(f"Response status: {response.status_code}")
-    if response.content:
-        try:
-            print(f"Response body: {response.text}")
-        except UnicodeDecodeError:
-            # If the response is not text, print raw bytes
-            print(f"Response body (raw bytes): {response.content}")
+    
+    try:
+        if verbose:
+            print(f"Sending POST to {url}")
+            print(f"Headers: {headers}")
+            print(f"Payload length: {len(payload)} bytes")
+            print(f"Cookie length: {len(cookie_value)} characters")
+        else:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"[{timestamp}] Beacon check-in -> {url}")
+            
+        response = requests.post(url, headers=headers, data=payload, timeout=10)
+        
+        if verbose:
+            print(f"Response status: {response.status_code}")
+            if response.content:
+                try:
+                    print(f"Response body: {response.text}")
+                except UnicodeDecodeError:
+                    # If the response is not text, print raw bytes
+    parser.add_argument('--beacon-mode', action='store_true',
+                        help='Enable continuous beacon mode (periodic check-ins)')
+    parser.add_argument('--duration', type=float, default=5.0,
+                        help='Duration to run in beacon mode (minutes, default: 5)')
+    parser.add_argument('--interval', type=float, default=60.0,
+                        help='Sleep interval between beacons (seconds, default: 60)')
+    parser.add_argument('--jitter', type=float, default=0.0,
+                        help='Jitter percentage for interval randomization (0-100, default: 0)')
+                    print(f"Response body (raw bytes): {response.content}")
+        else:
+            print(f"[{timestamp}] Response: {response.status_code} ({len(response.content)} bytes)")
+            
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"[ERROR] Request failed: {e}")
+        return False
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send a Cobalt Strike-like POST request.")
     parser.add_argument('--domain', default='localhost:8000',
                         help='Target domain/IP with optional port (default: localhost:8000)')
-    parser.add_argument('--url', default='',
-                        help='Full URL for the request (overrides --domain if provided)')
+    if args.beacon_mode:
+        # Beacon mode: continuous periodic check-ins
+        print("=" * 60)
+        print("BEACON MODE ACTIVATED")
+        print("=" * 60)
+        print(f"Target URL: {url}")
+        print(f"Duration: {args.duration} minutes")
+        print(f"Interval: {args.interval} seconds")
+        print(f"Jitter: {args.jitter}%")
+        print(f"Cookie length: {len(cookie_value)} characters")
+        print("=" * 60)
+        
+        end_time = datetime.now() + timedelta(minutes=args.duration)
+        beacon_count = 0
+        
+        try:
+            while datetime.now() < end_time:
+                beacon_count += 1
+                print(f"\n--- Beacon #{beacon_count} ---")
+                
+                success = send_post(url, cookie_value, verbose=False)
+                
+                # Calculate sleep time with jitter
+                sleep_time = args.interval
+                if args.jitter > 0:
+                    jitter_range = args.interval * (args.jitter / 100.0)
+                    jitter_value = (os.urandom(1)[0] / 255.0) * jitter_range * 2 - jitter_range
+                    sleep_time = max(1, args.interval + jitter_value)
+                
+                remaining = (end_time - datetime.now()).total_seconds()
+                if remaining <= 0:
+                    break
+                    
+                actual_sleep = min(sleep_time, remaining)
+                next_beacon = datetime.now() + timedelta(seconds=actual_sleep)
+                print(f"Sleeping {actual_sleep:.1f}s until next beacon (@ {next_beacon.strftime('%H:%M:%S')})")
+                time.sleep(actual_sleep)
+                
+        except KeyboardInterrupt:
+            print("\n\n[!] Beacon mode interrupted by user")
+        
+        print("\n" + "=" * 60)
+        print(f"Beacon mode completed. Total beacons sent: {beacon_count}")
+        print("=" * 60)
+    else:
+        # Single request mode
+        print(f"Generated cookie value ({len(cookie_value)} chars): {cookie_value[:40]}...")
+        send_post(url, cookie_value, verbose=Tr'Full URL for the request (overrides --domain if provided)')
     parser.add_argument('--id', type=int, default=12345,
                         help='Numeric id to append as a query parameter (default: 12345)')
     parser.add_argument('--cookie-value', default='',
