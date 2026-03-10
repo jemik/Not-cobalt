@@ -86,14 +86,6 @@ def send_post(url: str, cookie_value: str, verbose: bool = True) -> bool:
                     print(f"Response body: {response.text}")
                 except UnicodeDecodeError:
                     # If the response is not text, print raw bytes
-    parser.add_argument('--beacon-mode', action='store_true',
-                        help='Enable continuous beacon mode (periodic check-ins)')
-    parser.add_argument('--duration', type=float, default=5.0,
-                        help='Duration to run in beacon mode (minutes, default: 5)')
-    parser.add_argument('--interval', type=float, default=60.0,
-                        help='Sleep interval between beacons (seconds, default: 60)')
-    parser.add_argument('--jitter', type=float, default=0.0,
-                        help='Jitter percentage for interval randomization (0-100, default: 0)')
                     print(f"Response body (raw bytes): {response.content}")
         else:
             print(f"[{timestamp}] Response: {response.status_code} ({len(response.content)} bytes)")
@@ -108,6 +100,42 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Send a Cobalt Strike-like POST request.")
     parser.add_argument('--domain', default='localhost:8000',
                         help='Target domain/IP with optional port (default: localhost:8000)')
+    parser.add_argument('--url', default='',
+                        help='Full URL for the request (overrides --domain if provided)')
+    parser.add_argument('--id', type=int, default=12345,
+                        help='Numeric id to append as a query parameter (default: 12345)')
+    parser.add_argument('--cookie-value', default='',
+                        help='Base64-encoded cookie value (defaults to randomly generated)')
+    parser.add_argument('--beacon-mode', action='store_true',
+                        help='Enable continuous beacon mode (periodic check-ins)')
+    parser.add_argument('--duration', type=float, default=5.0,
+                        help='Duration to run in beacon mode (minutes, default: 5)')
+    parser.add_argument('--interval', type=float, default=60.0,
+                        help='Sleep interval between beacons (seconds, default: 60)')
+    parser.add_argument('--jitter', type=float, default=0.0,
+                        help='Jitter percentage for interval randomization (0-100, default: 0)')
+    args = parser.parse_args()
+
+    # Build the full URL: use --url if provided, otherwise construct from --domain
+    if args.url:
+        url = args.url
+    else:
+        url = f"http://{args.domain}/submit.php"
+    
+    # Append the id parameter if not already present
+    if 'id=' not in url:
+        # Append id as a query parameter
+        delimiter = '&' if '?' in url else '?'
+        url = f"{url}{delimiter}id={args.id}"
+
+    # Determine cookie value: use provided value or generate realistic one
+    cookie_value = args.cookie_value
+    if not cookie_value:
+        # Generate a realistic Base64 cookie (128+ characters)
+        # Real Cobalt Strike cookies are long Base64-encoded encrypted session data
+        random_bytes = os.urandom(96)  # 96 bytes -> 128 chars in Base64
+        cookie_value = base64.b64encode(random_bytes).decode('ascii')
+    
     if args.beacon_mode:
         # Beacon mode: continuous periodic check-ins
         print("=" * 60)
@@ -155,35 +183,7 @@ def main() -> None:
     else:
         # Single request mode
         print(f"Generated cookie value ({len(cookie_value)} chars): {cookie_value[:40]}...")
-        send_post(url, cookie_value, verbose=Tr'Full URL for the request (overrides --domain if provided)')
-    parser.add_argument('--id', type=int, default=12345,
-                        help='Numeric id to append as a query parameter (default: 12345)')
-    parser.add_argument('--cookie-value', default='',
-                        help='Base64-encoded cookie value (defaults to randomly generated)')
-    args = parser.parse_args()
-
-    # Build the full URL: use --url if provided, otherwise construct from --domain
-    if args.url:
-        url = args.url
-    else:
-        url = f"http://{args.domain}/submit.php"
-    
-    # Append the id parameter if not already present
-    if 'id=' not in url:
-        # Append id as a query parameter
-        delimiter = '&' if '?' in url else '?'
-        url = f"{url}{delimiter}id={args.id}"
-
-    # Determine cookie value: use provided value or generate realistic one
-    cookie_value = args.cookie_value
-    if not cookie_value:
-        # Generate a realistic Base64 cookie (128+ characters)
-        # Real Cobalt Strike cookies are long Base64-encoded encrypted session data
-        random_bytes = os.urandom(96)  # 96 bytes -> 128 chars in Base64
-        cookie_value = base64.b64encode(random_bytes).decode('ascii')
-    
-    print(f"Generated cookie value ({len(cookie_value)} chars): {cookie_value[:40]}...")
-    send_post(url, cookie_value)
+        send_post(url, cookie_value, verbose=True)
 
 
 if __name__ == '__main__':
