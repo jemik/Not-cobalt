@@ -36,13 +36,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        #mesh-bg {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            z-index: 0;
+            pointer-events: none;
+            background: #ffffff;
         }
         
         header {
-            height: 60px;
+            height: 80px;
             background: #ffffff;
             padding: 0 40px;
             border-bottom: 1px solid #e0e0e0;
+            z-index: 2;
         }
         
         .header-content {
@@ -80,6 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            z-index: 10;
         }
         
         .terminal-header {
@@ -155,9 +170,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
         
         footer {
-            background: #ffffff;
-            padding: 20px 40px;
+            background: #fff;
+            padding: 40px 40px;
             border-top: 1px solid #e0e0e0;
+            z-index: 3;
         }
         
         .footer-content {
@@ -177,19 +193,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         
         .footer-right {
             text-align: right;
-            color: #8a8a8a;
+            color: #555;
             font-size: 12px;
             white-space: nowrap;
         }
         
         .version {
-            color: #8a8a8a;
+            color: #000;
             font-size: 12px;
             margin-bottom: 8px;
         }
         
         .disclaimer {
-            color: #1a1a1a;
+            color: #555;
             font-size: 11px;
             line-height: 1.5;
         }
@@ -273,6 +289,257 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             </div>
         </div>
     </footer>
+
+    <canvas id="mesh-bg"></canvas>
+
+    <script>
+    (() => {
+      const canvas = document.getElementById("mesh-bg");
+      const ctx = canvas.getContext("2d", { alpha: false });
+
+      let width = 0;
+      let height = 0;
+      let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      const LOOP_SECONDS = 16;
+      const TAU = Math.PI * 2;
+
+      const isMobile = () => window.innerWidth < 768;
+
+      const CONFIG = {
+        bg: "#ffffff",
+        maxDistFg: 115,
+        maxDistBg: 130,
+        nodeColorFg: "rgba(0,0,0,0.9)",
+        nodeColorBg: "rgba(0,0,0,0.28)",
+        lineBaseAlphaFg: 0.18,
+        lineBaseAlphaBg: 0.06,
+        nodeSizeFg: [1.0, 1.8],
+        nodeSizeBg: [0.8, 1.2],
+      };
+
+      let layers = [];
+
+      function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        width = window.innerWidth;
+        height = window.innerHeight;
+
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        canvas.style.width = width + "px";
+        canvas.style.height = height + "px";
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        buildScene();
+      }
+
+      function rand(min, max) {
+        return Math.random() * (max - min) + min;
+      }
+
+      function lerp(a, b, t) {
+        return a + (b - a) * t;
+      }
+
+      function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+      }
+
+      function densityWeight(x, y) {
+        const nx = x / width;
+        const ny = y / height;
+
+        const cluster1 =
+          Math.exp(-(((nx - 0.72) ** 2) / 0.03 + ((ny - 0.62) ** 2) / 0.05));
+        const cluster2 =
+          Math.exp(-(((nx - 0.58) ** 2) / 0.05 + ((ny - 0.72) ** 2) / 0.08));
+        const cluster3 =
+          Math.exp(-(((nx - 0.88) ** 2) / 0.025 + ((ny - 0.58) ** 2) / 0.05));
+
+        const band = Math.exp(-((ny - (0.72 - nx * 0.18)) ** 2) / 0.02);
+
+        const sparsePenalty = nx < 0.35 && ny < 0.45 ? 0.22 : 1.0;
+
+        return clamp((cluster1 + cluster2 + cluster3 + band * 0.8) * sparsePenalty, 0, 1.2);
+      }
+
+      function createParticle(layerType) {
+        const isFg = layerType === "fg";
+
+        let x, y, weight, tries = 0;
+        do {
+          x = rand(0, width);
+          y = rand(0, height);
+          weight = densityWeight(x, y);
+          tries++;
+        } while (Math.random() > Math.min(1, 0.15 + weight) && tries < 30);
+
+        if (Math.random() < 0.7) {
+          y = lerp(y, rand(height * 0.52, height * 0.92), 0.55);
+        }
+
+        return {
+          baseX: x,
+          baseY: y,
+          x,
+          y,
+          r: isFg
+            ? rand(CONFIG.nodeSizeFg[0], CONFIG.nodeSizeFg[1])
+            : rand(CONFIG.nodeSizeBg[0], CONFIG.nodeSizeBg[1]),
+          ampX: isFg ? rand(6, 18) : rand(8, 24),
+          ampY: isFg ? rand(6, 16) : rand(8, 20),
+          phase1: rand(0, TAU),
+          phase2: rand(0, TAU),
+          phase3: rand(0, TAU),
+          bandInfluence: rand(0.3, 1.0),
+        };
+      }
+
+      function createDetachedClusters(layerType, count) {
+        const particles = [];
+        for (let i = 0; i < count; i++) {
+          const cx = rand(width * 0.62, width * 0.95);
+          const cy = rand(height * 0.08, height * 0.38);
+          const localCount = Math.floor(rand(6, 16));
+
+          for (let j = 0; j < localCount; j++) {
+            particles.push({
+              baseX: cx + rand(-55, 55),
+              baseY: cy + rand(-35, 35),
+              x: cx,
+              y: cy,
+              r: layerType === "fg" ? rand(1.0, 1.7) : rand(0.8, 1.1),
+              ampX: layerType === "fg" ? rand(5, 14) : rand(7, 18),
+              ampY: layerType === "fg" ? rand(5, 12) : rand(6, 16),
+              phase1: rand(0, TAU),
+              phase2: rand(0, TAU),
+              phase3: rand(0, TAU),
+              bandInfluence: rand(0.2, 0.7),
+            });
+          }
+        }
+        return particles;
+      }
+
+      function buildScene() {
+        const mobile = isMobile();
+
+        const bgCount = mobile ? 70 : 130;
+        const fgCount = mobile ? 130 : 280;
+
+        const bgParticles = Array.from({ length: bgCount }, () => createParticle("bg"));
+        const fgParticles = Array.from({ length: fgCount }, () => createParticle("fg"));
+
+        bgParticles.push(...createDetachedClusters("bg", mobile ? 1 : 2));
+        fgParticles.push(...createDetachedClusters("fg", mobile ? 2 : 4));
+
+        layers = [
+          {
+            type: "bg",
+            particles: bgParticles,
+            speed: 0.55,
+            maxDist: CONFIG.maxDistBg,
+            lineAlpha: CONFIG.lineBaseAlphaBg,
+            nodeColor: CONFIG.nodeColorBg,
+          },
+          {
+            type: "fg",
+            particles: fgParticles,
+            speed: 1.0,
+            maxDist: CONFIG.maxDistFg,
+            lineAlpha: CONFIG.lineBaseAlphaFg,
+            nodeColor: CONFIG.nodeColorFg,
+          }
+        ];
+      }
+
+      function updateParticle(p, tNorm, layerSpeed) {
+        const angle = tNorm * TAU;
+
+        const waveBand =
+          Math.sin((p.baseX / width) * Math.PI * 1.4 + angle + p.phase3) * 10 * p.bandInfluence;
+
+        p.x =
+          p.baseX +
+          Math.cos(angle * layerSpeed + p.phase1) * p.ampX +
+          Math.sin(angle * 2 + p.phase2) * (p.ampX * 0.18);
+
+        p.y =
+          p.baseY +
+          Math.sin(angle * layerSpeed + p.phase2) * p.ampY +
+          Math.cos(angle * 2 + p.phase1) * (p.ampY * 0.15) +
+          waveBand;
+      }
+
+      function drawConnections(layer) {
+        const particles = layer.particles;
+        const maxDist = layer.maxDist;
+        const maxDistSq = maxDist * maxDist;
+
+        for (let i = 0; i < particles.length; i++) {
+          const a = particles[i];
+
+          for (let j = i + 1; j < particles.length; j++) {
+            const b = particles[j];
+
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            const d2 = dx * dx + dy * dy;
+
+            if (d2 > maxDistSq) continue;
+
+            const d = Math.sqrt(d2);
+            const alpha = layer.lineAlpha * (1 - d / maxDist);
+
+            if (alpha <= 0.003) continue;
+
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.strokeStyle = `rgba(0,0,0,${alpha.toFixed(4)})`;
+            ctx.lineWidth = layer.type === "fg" ? 0.55 : 0.45;
+            ctx.stroke();
+          }
+        }
+      }
+
+      function drawParticles(layer) {
+        ctx.fillStyle = layer.nodeColor;
+        for (const p of layer.particles) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, TAU);
+          ctx.fill();
+        }
+      }
+
+      function draw() {
+        const now = performance.now() * 0.001;
+        const tNorm = (now % LOOP_SECONDS) / LOOP_SECONDS;
+
+        ctx.fillStyle = CONFIG.bg;
+        ctx.fillRect(0, 0, width, height);
+
+        for (const layer of layers) {
+          for (const p of layer.particles) {
+            updateParticle(p, tNorm, layer.speed);
+          }
+        }
+
+        drawConnections(layers[0]);
+        drawParticles(layers[0]);
+
+        drawConnections(layers[1]);
+        drawParticles(layers[1]);
+
+        requestAnimationFrame(draw);
+      }
+
+      window.addEventListener("resize", resize, { passive: true });
+      resize();
+      requestAnimationFrame(draw);
+    })();
+    </script>
 </body>
 </html>
     <?php

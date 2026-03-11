@@ -45,8 +45,8 @@ echo "🔐 Step 2: Authenticating Docker to ECR..."
 aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
 # Step 3: Build and tag the Docker image
-echo "🏗️  Step 3: Building Docker image..."
-docker build -t $ECR_REPO:$IMAGE_TAG .
+echo "🏗️  Step 3: Building Docker image for AMD64 (AWS Fargate)..."
+docker buildx build --platform linux/amd64 -t $ECR_REPO:$IMAGE_TAG .
 
 # Step 4: Tag for ECR
 echo "🏷️  Step 4: Tagging image for ECR..."
