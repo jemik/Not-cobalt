@@ -79,6 +79,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             letter-spacing: -0.5px;
         }
         
+        nav {
+            background: #212121;
+            padding: 0 40px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #333333;
+            z-index: 2;
+        }
+        
+        .nav-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+            display: flex;
+            align-items: center;
+        }
+        
+        nav .nav-text {
+            color: #ffffff;
+            font-size: 11px;
+            letter-spacing: 0px;
+            text-transform: uppercase;
+        }
+        
         main {
             flex: 1;
             display: flex;
@@ -224,6 +249,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             <h1>I'M NOT A BEACON!</h1>
         </div>
     </header>
+    
+    <nav>
+        <div class="nav-content">
+            <span class="nav-text"> // NDR Testing Site</span>
+        </div>
+    </nav>
     
     <main>
         <div class="terminal">
