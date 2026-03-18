@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
         
         header {
-            height: 80px;
+            height: 70px;
             background: #ffffff;
             padding: 0 40px;
             border-bottom: 1px solid #e0e0e0;
